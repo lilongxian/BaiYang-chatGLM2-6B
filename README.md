@@ -13,3 +13,7 @@
 # 友情链接
 https://github.com/THUDM/ChatGLM2-6B
 
+# 邮箱
+whpxty5518@163.com  Li·Long 
+
+
