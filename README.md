@@ -14,6 +14,6 @@
 https://github.com/THUDM/ChatGLM2-6B
 
 # 邮箱
-whpxty5518@163.com  Li·Long 
+whpxty5518@163.com / 17719085580（wx） Li·Long 
 
 
