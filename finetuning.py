@@ -8,18 +8,20 @@
 https://github.com/THUDM/ChatGLM-6B/tree/main/ptuning
 
 CreateTime: 2023-07-03
+updateTime: 2023-07-11
 Author: li-long·BaiYang
 
 """
 import os
-
-# 默认GPU训练。当使用CPU训练时，需要增加下面这行代码，另外要注释掉 model = model.half()这行，
-# 最后还要把模型配置文件中的 "torch_dtype"改为"float32", but, 非常消耗内存！
-# os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
+import torch
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+if torch.cuda.is_available():
+    device = torch.device(0)
+else:
+    device = torch.device('cpu')
 
 import datetime
 import json
-# import torch
 import numpy as np
 from datasets import load_dataset
 import jieba
@@ -32,7 +34,8 @@ from transformers import set_seed, \
     Seq2SeqTrainingArguments
 from glm2_core.trainer_seq2seq import Seq2SeqTrainer
 from glm2_core.tokenization_chatglm import ChatGLMTokenizer
-from glm2_core.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMConfig
+from glm2_core.modeling_chatglm import ChatGLMForConditionalGeneration
+from glm2_core.configuration_chatglm import ChatGLMConfig
 
 
 @dataclass
@@ -46,6 +49,15 @@ class ModelArguments:
 
     # 是否是加载自己微调的模型
     load_ptuning: bool = field(default=False)
+
+    # 默认128
+    pre_seq_len: Optional[int] = field(
+        default=128
+    )
+    # False
+    prefix_projection: bool = field(
+        default=False
+    )
 
 
 @dataclass
@@ -121,18 +133,28 @@ def main():
 
     """ 模型加载 """
     tokenizer = ChatGLMTokenizer.from_pretrained(model_and_tokenizer_config_dir)
+    model_config_file = os.path.join(model_and_tokenizer_config_dir, "config.json")
+    with open(model_config_file, "r", encoding="utf-8") as file:
+        model_config = json.load(file)
+    glm_config = ChatGLMConfig(**model_config)
+    glm_config.pre_seq_len = model_args.pre_seq_len
+    glm_config.prefix_projection = model_args.prefix_projection
     model = ChatGLMForConditionalGeneration.from_pretrained(
         pretrained_model_name_or_path=model_and_tokenizer_config_dir,
+        config=glm_config,
         device_map="auto",
         torch_dtype="auto",
-        # ignore_mismatched_sizes=True
+        low_cpu_mem_usage=True,
+        load_in_8bit=False,
     )
 
-    """ 模型量化"""
-    if model_args.quantization_bit is not None:
-        print("model_args.quantization_bit: ", model_args.quantization_bit)
-        model = model.quantize(model_args.quantization_bit)
-    model = model.half()
+    if device == torch.device('cpu'):
+        model.float()
+    else:
+        if model_args.quantization_bit is not None:
+            print("model_args.quantization_bit: ", model_args.quantization_bit)
+            model = model.quantize(model_args.quantization_bit)
+        model = model.half()
 
     """  数据向量化建模  """
     prefix = ""
@@ -189,20 +211,18 @@ def main():
                 a_ids = tokenizer.encode(text=prompt, add_special_tokens=False)
                 b_ids = tokenizer.encode(text=answer, add_special_tokens=False)
 
-                # 这里有变，则重于对话数据的上下文衔接
+                # 则重于对话数据的上下文衔接
                 if len(a_ids) > data_args.max_source_length - 1:
                     a_ids = a_ids[-data_args.max_source_length + 1:]
-                if len(b_ids) > data_args.max_target_length - 2:
-                    b_ids = b_ids[: data_args.max_target_length - 2]
+                if len(b_ids) > data_args.max_target_length - 1:
+                    b_ids = b_ids[: data_args.max_target_length - 1]
 
-                # chatGLM1:input_ids 为 “c + t”： a1, a2 ,... [gmask] [bos] b1, b2,... [eos]
-                # chatGLM2:input_ids 为 “c + t”： a1,a2,...an,[gMASK],<sop> b1,b2,...bn,<eop>
+                # 2023-07-11: GLM2这里已经不再使用[gMASK]，而是与LLAMA对齐:
+                # [<bos>, a_tok_0, a_tok_1, ..., a_tok_m b_tok_0, b_tok_1,..., b_tok_n, <eos>]
                 input_ids = tokenizer.build_inputs_with_special_tokens(a_ids, b_ids)
-
-                context_length = input_ids.index(tokenizer.tokenizer.special_tokens["sop"])
-                mask_position = context_length - 1
-                labels = [-100] * context_length + input_ids[mask_position + 1:]
-                assert len(input_ids) == len(labels), "error: len(input_ids) == len(labels)"
+                context_length = len(a_ids) + 1
+                labels = [-100] * context_length + input_ids[context_length:]
+                assert len(input_ids) == len(labels), "error: len(input_ids) is not equal to len(labels)!"
 
                 pad_len = max_seq_length - len(input_ids)
                 input_ids = input_ids + [tokenizer.pad_token_id] * pad_len
@@ -290,7 +310,7 @@ def main():
         tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics if training_args.predict_with_generate else None,
-    )  # predict_with_generate 为True
+    )
 
     """  --------- Training -------- """
     if training_args.do_train:
@@ -306,10 +326,7 @@ def main():
         trainer.log_metrics(split="train", metrics=metrics)
         trainer.save_metrics(split="train", metrics=metrics)  # Save metrics into a json file: `train_results.json`.
         trainer.save_state()
-        # trainer.save_model()
         print("---- 保存模型拓扑和权重完成 ----")
 
 
-if __name__ == "__main__":
-    main()
 

@@ -16,11 +16,11 @@ def convert(raw_file, line_num=None):
                 dic["history"] = [item["input"]]
                 dic["prompt"] = item["instruction"]
                 dic["response"] = item["output"]
-                dis_file.write(str(dic)+"\n")
+                dis_file.write(json.dumps(dic, ensure_ascii=False)+"\n")
                 c += 1
 
 
 if __name__ == '__main__':
     filename = "./raw.json"
-    convert(filename, 10)
+    convert(filename)
 

@@ -22,7 +22,7 @@ class SPTokenizer:
         self.n_words: int = self.sp_model.vocab_size()  # 65024
         self.bos_id: int = self.sp_model.bos_id()  # 1
         self.eos_id: int = self.sp_model.eos_id()  # 2
-        self.pad_id: int = self.sp_model.eos_id()  # 2
+        self.pad_id: int = self.sp_model.unk_id()  # 0
         assert self.sp_model.vocab_size() == self.sp_model.get_piece_size()
 
         special_tokens = ["[MASK]", "[gMASK]", "[sMASK]", "sop", "eop"]
@@ -51,9 +51,9 @@ class SPTokenizer:
         :return:
         对2023-06-25版chatGLM2-6B Bug修复：
         {'[MASK]': 64789, '[gMASK]': 64790, '[sMASK]': 64791, 'sop': 64792, 'eop': 64793}
-        中的特殊字符以及-100都需要过滤掉。
+        中的特殊字符以及-100、 0都需要过滤掉。
         """
-        items = list(self.special_tokens.values()) + [-100]
+        items = list(self.special_tokens.values()) + [-100, 0]
         for i in items:
             t = list(filter((i).__ne__, t))
         # print("t: ", t)
@@ -90,7 +90,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         self.special_tokens = {
             "<bos>": self.tokenizer.bos_id,  # 1
             "<eos>": self.tokenizer.eos_id,  # 2
-            "<pad>": self.tokenizer.pad_id   # 2
+            "<pad>": self.tokenizer.pad_id   # 0
         }
 
     # 转换special token到其id
@@ -190,12 +190,12 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         #     token_ids_0 = token_ids_0 + token_ids_1 + [self.get_command("<eos>")]
         # return token_ids_0
 
-        # # 2023-06-30对源码修复如下：修改 [gMASK_id, sop_id]链接位置，以及使用 ‘eop’
-        prefix_tokens = self.get_prefix_tokens()
-        token_ids_0 += prefix_tokens
+        # # # 2023-07-11: 对源码修复为与llama对齐. GLM2已经丢弃[gMASK],这里与LLAMA一致
+        output = [self.get_command("<bos>")] + token_ids_0
         if token_ids_1 is not None:
-            token_ids_0 += token_ids_1 + [self.get_command("eop")]
-        return token_ids_0
+            output += token_ids_1
+        output += [self.get_command("<eos>")]
+        return output
 
     def _pad(
             self,

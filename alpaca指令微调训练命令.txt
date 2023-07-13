@@ -1,9 +1,0 @@
-
-## 指令微调训练命令：
-
-python finetuning.py --do_train --train_file data/train.json  --history_column history  --prompt_column prompt --response_column response  --model_name_or_path D:/2023-LLM/PreTrained_LLM_Weights/chatGLM2-6B   --output_dir D:\glm_out\ --overwrite_output_dir --max_source_length 300 --max_target_length 200 --per_device_train_batch_size 1 --per_device_eval_batch_size 1 --gradient_accumulation_steps 10 --predict_with_generate --max_steps 500 --logging_steps 10 --save_steps 100 --learning_rate 1e-2  --quantization_bit 4
-
-上述 --model_name_or_path 参数请修改为你的预训练模型所在目录。模型下载参考清华chatGLM2-6B的说明。
-
-备注：
-  本微调模型支持清华chatGLM-6B、chatGLM2-6B的训练数据格式，也支持了alpaca指令训练数据格式。
