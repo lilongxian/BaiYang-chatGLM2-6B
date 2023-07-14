@@ -43,7 +43,7 @@ class NormRotaryEmbedding(torch.nn.Module):
         # 32个长度的向量for tensor. $\Theta = {\theta_i = 10000^{\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
         theta = 1.0 / (base ** (torch.arange(0, n_elem, 2, dtype=dtype, device=device) / n_elem))
 
-        # Create position indexes `[0, 1, ..., 32767]`
+        # Create position indexes `[0, 1, ..., 32767]/16`
         seq_idx = torch.arange(seq_len, dtype=dtype, device=device)/self.ratio
 
         # Calculate the product of position index and $\theta_i$

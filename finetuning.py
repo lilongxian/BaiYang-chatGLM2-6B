@@ -14,12 +14,6 @@ Author: li-long·BaiYang
 """
 import os
 import torch
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-if torch.cuda.is_available():
-    device = torch.device(0)
-else:
-    device = torch.device('cpu')
-
 import datetime
 import json
 import numpy as np
@@ -36,21 +30,16 @@ from glm2_core.trainer_seq2seq import Seq2SeqTrainer
 from glm2_core.tokenization_chatglm import ChatGLMTokenizer
 from glm2_core.modeling_chatglm import ChatGLMForConditionalGeneration
 from glm2_core.configuration_chatglm import ChatGLMConfig
+from peft import LoraConfig, TaskType, get_peft_model, PeftModel, get_peft_model_state_dict
 
 
 @dataclass
 class ModelArguments:
     model_name_or_path: str = field(default=None,
                                     metadata={"help": "The docment Path of pretrained model."})
-    ptuning_best_model_path: str = field(default=None,
-                                         metadata={"help": "The fine tuning best model room in."})
     # 模型量化到的bit
     quantization_bit: Optional[int] = field(default=None)
 
-    # 是否是加载自己微调的模型
-    load_ptuning: bool = field(default=False)
-
-    # 默认128
     pre_seq_len: Optional[int] = field(
         default=128
     )
@@ -104,14 +93,21 @@ class DataTrainingArguments:
         })
 
 
+@dataclass
+class MyTrainingArguments(Seq2SeqTrainingArguments):
+    trainable: Optional[str] = field(default="query_key_value,dense,dense_h_to_4h,dense_4h_to_h")
+    lora_rank: Optional[int] = field(default=8)
+    lora_dropout: Optional[float] = field(default=0.05)
+    lora_alpha: Optional[float] = field(default=32.)
+    modules_to_save: Optional[str] = field(default="transformer.embedding.word_embeddings,transformer.output_layer,transformer.prefix_encoder.embedding")
+
+
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, MyTrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     set_seed(training_args.seed)
 
     model_and_tokenizer_config_dir = model_args.model_name_or_path
-    if model_args.load_ptuning:
-        ptuning_model_path = model_args.ptuning_best_model_path
 
     """  加载数据集 """
     data_files = {}
@@ -147,14 +143,29 @@ def main():
         low_cpu_mem_usage=True,
         load_in_8bit=False,
     )
+    print(">>> Init new peft model...")  # 从原始的LLAMA模型开始用LoRA方法预训练
+    peft_config = LoraConfig(
+        task_type=TaskType.CAUSAL_LM,
+        target_modules=training_args.trainable.split(','),
+        inference_mode=False,
+        r=training_args.lora_rank,
+        lora_alpha=training_args.lora_alpha,
+        lora_dropout=training_args.lora_dropout,
+        modules_to_save=training_args.modules_to_save.split(',') if training_args.modules_to_save else None
+    )
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
+    old_state_dict = model.state_dict
+    model.state_dict = (
+        lambda self, *_, **__: get_peft_model_state_dict(self, old_state_dict())
+    ).__get__(model, type(model))
 
-    if device == torch.device('cpu'):
-        model.float()
-    else:
-        if model_args.quantization_bit is not None:
-            print("model_args.quantization_bit: ", model_args.quantization_bit)
-            model = model.quantize(model_args.quantization_bit)
+    if model_args.quantization_bit is not None:
+        print("model_args.quantization_bit: ", model_args.quantization_bit)
+        model = model.quantize(model_args.quantization_bit)
         model = model.half()
+    if model_args.pre_seq_len is not None:
+        model.transformer.prefix_encoder.float()
 
     """  数据向量化建模  """
     prefix = ""

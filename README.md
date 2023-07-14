@@ -1,27 +1,25 @@
 # LL-BaiYang
 
-本项目对清华2023-06-25开源的chatGLM2-6B模型进行了模型网络建设、数据建模等全部技术的反向研究（关键地方做了注释，并修复了tokenization脚本中的bug）。并尝试复现其指令微调训练模型。
-
 优点：
 
 1. 支持清华chatGLM-6B、alpaca指令微调训练数据格式。
 
-2. 支持GPU量化训练、CPU全参数训练。
+2. 支持Lora量化训练，保留原始权重的能力。
 
-3. 支持单任务和多任务的知识挖掘。
+3. 通过生成式的方法支持单任务和多任务知识挖掘类NLP任务。
 
-4. 支持多轮对话。
+4. 支持多轮对话、摘要、续写等知识生成类NLP任务。
 
-5. 支持2048区间弹性标准化的旋转位置词嵌入编码器，以取得在万级tokens上的更好效果。
+5. 旋转位置词嵌入编码器支持2048区间弹性标准化，以取得在万级tokens上的更好效果。
 
-本项目技术参考、引用了清华chatGLM-6B、chatGLM2-6B部分代码。若你使用本项目，请注名引用清华知识产权。本项目开源，不保证商业化效果，仅供学术研究使用。
+本项目技术参考、引用了清华chatGLM-6B、chatGLM2-6B部分代码。若你使用本项目，请注明引用自清华chatGLM2-6B项目。本项目不保证商业化效果，仅供NLP学术研究。
 
 
 # Update
 1. 2023-07-04： 首次开源，仅次于清华官方微调训练模型开源时间。
 2. 2023-07-11: 修复tokenization的上下句拼接方式，与llama、GLM2对齐.
 3. 2023-07-11: 改进chatGLM2-6B官方的旋转位置词嵌入编码器。借鉴了longchat的可弹性压缩的位置标准化旋转编码器的设计方法，充分利用2048正弦波上的位置取得更好向量表示，以取得在万级tokens上的更好支持。
-
+4. 2023-07-14: 改为Lora训练方式
 
 # 环境
 
@@ -36,17 +34,6 @@ alpaca数据转换命令：python convert_alpaca2glm.py
 
 将转换后的数据分配到 data/train.json
 
-## CPU训练
-
-请确保你的空闲内存足够。当seq_length为500时，将消耗不低于58G内存！
-
-1. 注释掉finetuning.py中的os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
-2. 运行命令：
-
-python finetune_norm_32k.py --do_train --train_file data/train.json  --history_column history  --prompt_column prompt --response_column response  --model_name_or_path D:/2023-LLM/PreTrained_LLM_Weights/chatGLM2-6B   --output_dir D:\glm_out\ --overwrite_output_dir --max_source_length 300 --max_target_length 200 --per_device_train_batch_size 1 --per_device_eval_batch_size 1 --gradient_accumulation_steps 1 --predict_with_generate --max_steps 500 --logging_steps 1 --save_steps 100 --learning_rate 1e-2 
-
---model_name_or_path 参数请修改为你的预训练模型所在目录
 
 ## GPU训练
 
