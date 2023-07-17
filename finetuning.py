@@ -223,15 +223,15 @@ def main():
                 b_ids = tokenizer.encode(text=answer, add_special_tokens=False)
 
                 # 则重于对话数据的上下文衔接
-                if len(a_ids) > data_args.max_source_length - 1:
-                    a_ids = a_ids[-data_args.max_source_length + 1:]
+                if len(a_ids) > data_args.max_source_length - 2:
+                    a_ids = a_ids[-data_args.max_source_length + 2:]
                 if len(b_ids) > data_args.max_target_length - 1:
                     b_ids = b_ids[: data_args.max_target_length - 1]
 
-                # 2023-07-11: GLM2这里已经不再使用[gMASK]，而是与LLAMA对齐:
-                # [<bos>, a_tok_0, a_tok_1, ..., a_tok_m b_tok_0, b_tok_1,..., b_tok_n, <eos>]
+                # GLM1:input_ids 为 “c + t”： a1, a2 ,...,am, [gmask],[bos], b1, b2,...,bn,[eos]
+                # GLM2:input_ids 为 “c + t”： [gMASK],<sop>, a1,a2,...,am, b1,b2,...bn,<eos>
                 input_ids = tokenizer.build_inputs_with_special_tokens(a_ids, b_ids)
-                context_length = len(a_ids) + 1
+                context_length = len(a_ids) + 2
                 labels = [-100] * context_length + input_ids[context_length:]
                 assert len(input_ids) == len(labels), "error: len(input_ids) is not equal to len(labels)!"
 

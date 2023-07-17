@@ -15,8 +15,10 @@ model_config_file = os.path.join(model_and_tokenizer_config_dir, "config.json")
 with open(model_config_file, "r", encoding="utf-8") as file:
     model_config = json.load(file)
 glm_config = AutoConfig(**model_config)
+glm_config.pre_seq_len = None  # 禁用前置编码器，你也可以设置一个合理的int数值来启用她
+glm_config.prefix_projection = False
 model = AutoModel.from_pretrained(model_and_tokenizer_config_dir, config=glm_config)
-model = model.quantize(4)  # 或者.cuda()
+model = model.quantize(4).half()
 model.to("cuda:0")
 print(">>> 微调模型权重参数加载完成！")
 

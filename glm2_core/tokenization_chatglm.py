@@ -1,9 +1,3 @@
-"""
-声明：本脚本tokenization_chatglm.py代码参考清华 chatGLM2-6B 2023-06-25版。
-  若使用本代码请著名原作者（清华chatGLM2-6B 2023-06-25版）。
-CreateTime: 2023-06-30  li-long·BaiYang
-"""
-
 import os
 import torch
 from typing import List, Optional, Union, Dict
@@ -15,18 +9,19 @@ from transformers.tokenization_utils_base import EncodedInput, BatchEncoding
 
 class SPTokenizer:
     def __init__(self, model_path: str):
+        # reload tokenizer
         assert os.path.isfile(model_path), model_path
         self.sp_model = SentencePieceProcessor(model_file=model_path)
 
         # BOS / EOS token IDs
-        self.n_words: int = self.sp_model.vocab_size()  # 65024
-        self.bos_id: int = self.sp_model.bos_id()  # 1
-        self.eos_id: int = self.sp_model.eos_id()  # 2
-        self.pad_id: int = self.sp_model.unk_id()  # 0
+        self.n_words: int = self.sp_model.vocab_size()
+        self.bos_id: int = self.sp_model.bos_id()
+        self.eos_id: int = self.sp_model.eos_id()
+        self.pad_id: int = self.sp_model.unk_id()
         assert self.sp_model.vocab_size() == self.sp_model.get_piece_size()
 
         special_tokens = ["[MASK]", "[gMASK]", "[sMASK]", "sop", "eop"]
-        self.special_tokens = {}  # {'[MASK]': 64789, '[gMASK]': 64790, '[sMASK]': 64791, 'sop': 64792, 'eop': 64793}
+        self.special_tokens = {}
         self.index_special_tokens = {}
         for token in special_tokens:
             self.special_tokens[token] = self.n_words
@@ -46,17 +41,9 @@ class SPTokenizer:
         return t
 
     def decode(self, t: List[int]) -> str:
-        """
-        :param t:
-        :return:
-        对2023-06-25版chatGLM2-6B Bug修复：
-        {'[MASK]': 64789, '[gMASK]': 64790, '[sMASK]': 64791, 'sop': 64792, 'eop': 64793}
-        中的特殊字符以及-100、 0都需要过滤掉。
-        """
         items = list(self.special_tokens.values()) + [-100, 0]
         for i in items:
             t = list(filter((i).__ne__, t))
-        # print("t: ", t)
         return self.sp_model.decode(t)
 
     def decode_tokens(self, tokens: List[str]) -> str:
@@ -71,7 +58,7 @@ class SPTokenizer:
 
     def convert_id_to_token(self, index):
         """Converts an index (integer) in a token (str) using the vocab."""
-        if index in self.index_special_tokens:
+        if index in self.index_special_tokens or index in [self.eos_id, self.bos_id, self.pad_id] or index < 0:
             return ""
         return self.sp_model.IdToPiece(index)
 
@@ -82,18 +69,17 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
     model_input_names = ["input_ids", "attention_mask", "position_ids"]
 
     def __init__(self, vocab_file, padding_side="left", **kwargs):
-        super().__init__(padding_side=padding_side, **kwargs)
+        super().__init__(padding_side=padding_side, clean_up_tokenization_spaces=False, **kwargs)
         self.name = "GLMTokenizer"
 
         self.vocab_file = vocab_file
         self.tokenizer = SPTokenizer(vocab_file)
         self.special_tokens = {
-            "<bos>": self.tokenizer.bos_id,  # 1
-            "<eos>": self.tokenizer.eos_id,  # 2
-            "<pad>": self.tokenizer.pad_id   # 0
+            "<bos>": self.tokenizer.bos_id,
+            "<eos>": self.tokenizer.eos_id,
+            "<pad>": self.tokenizer.pad_id
         }
 
-    # 转换special token到其id
     def get_command(self, token):
         if token in self.special_tokens:
             return self.special_tokens[token]
@@ -101,12 +87,24 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         return self.tokenizer.special_tokens[token]
 
     @property
+    def unk_token(self) -> str:
+        return "<unk>"
+
+    @property
     def pad_token(self) -> str:
-        return "</s>"
+        return "<unk>"
 
     @property
     def pad_token_id(self):
         return self.get_command("<pad>")
+
+    @property
+    def eos_token(self) -> str:
+        return "</s>"
+
+    @property
+    def eos_token_id(self):
+        return self.get_command("<eos>")
 
     @property
     def vocab_size(self):
@@ -164,11 +162,21 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         prefix_tokens = [self.get_command("[gMASK]"), self.get_command("sop")]
         return prefix_tokens
 
+    def build_prompt(self, query, history=None):
+        if history is None:
+            history = []
+        prompt = ""
+        for i, (old_query, response) in enumerate(history):
+            prompt += "[Round {}]\n\n问：{}\n\n答：{}\n\n".format(i + 1, old_query, response)
+        prompt += "[Round {}]\n\n问：{}\n\n答：".format(len(history) + 1, query)
+        return prompt
+
     def build_inputs_with_special_tokens(
             self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
     ) -> List[int]:
         """
-        A BERT sequence has the following format:
+        Build model inputs from a sequence or a pair of sequence for sequence classification tasks by concatenating and
+        adding special tokens. A BERT sequence has the following format:
 
         - single sequence: `[CLS] X [SEP]`
         - pair of sequences: `[CLS] A [SEP] B [SEP]`
@@ -180,22 +188,13 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
                 Optional second list of IDs for sequence pairs.
 
         Returns:
-            AB句结合：
-                a1,a2,...an,[gMASK],<sop> b1,b2,...bn,<eop> 或 a1,a2,...an,<eos>,<sop> b1,b2,...bn,<eop>
+            `List[int]`: List of [input IDs](../glossary#input-ids) with the appropriate special tokens.
         """
-        # # 2023-06-25版chatGLM2-6B源代码:
-        # prefix_tokens = self.get_prefix_tokens()
-        # token_ids_0 = prefix_tokens + token_ids_0
-        # if token_ids_1 is not None:
-        #     token_ids_0 = token_ids_0 + token_ids_1 + [self.get_command("<eos>")]
-        # return token_ids_0
-
-        # # # 2023-07-11: 对源码修复为与llama对齐. GLM2已经丢弃[gMASK],这里与LLAMA一致
-        output = [self.get_command("<bos>")] + token_ids_0
+        prefix_tokens = self.get_prefix_tokens()
+        token_ids_0 = prefix_tokens + token_ids_0
         if token_ids_1 is not None:
-            output += token_ids_1
-        output += [self.get_command("<eos>")]
-        return output
+            token_ids_0 = token_ids_0 + token_ids_1 + [self.get_command("<eos>")]
+        return token_ids_0
 
     def _pad(
             self,
@@ -259,4 +258,3 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
             encoded_inputs[self.model_input_names[0]] = [self.pad_token_id] * difference + required_input
 
         return encoded_inputs
-
