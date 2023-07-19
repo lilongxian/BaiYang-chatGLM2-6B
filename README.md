@@ -24,7 +24,7 @@
 可参考数据集样例：data/explanation-based-learning-data
 
 
-7. 上述“基于证据理论的解释学习”数据建模原理，可以拓展到高效复制chatgpt能力以提升GLM2A综合能力中。
+7. 上述“基于证据理论的解释学习”数据建模原理，可以拓展到高效复制chatgpt能力以提升GLM2综合能力中。
 
 
 本项目技术参考、引用了清华chatGLM-6B、chatGLM2-6B部分代码。若你使用本项目，请注明引用自清华chatGLM2-6B项目。本项目不保证商业化效果，仅供NLP学术研究。
