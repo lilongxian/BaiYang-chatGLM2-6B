@@ -20,7 +20,7 @@
 
 6. 基于《大宋提刑官》证据论证+亚里斯多德三段论，探索出一种“基于证据理论的解释学习”机制，可有效提升模型解决数学、语言逻辑等复杂逻辑推理问题的能力。
 具体的讲，我在原来alpaca指令数据的基础上增加了一个EXPLAIN，所以将response修改为：
-   " EXPLAIN: " + explain部分 + " CONCLUSION: " + response部分
+                        " EXPLAIN: " + explain部分 + " CONCLUSION: " + response部分
 可参考数据集样例：data/explanation-based-learning-data
 
 
@@ -69,6 +69,7 @@ python finetune_norm_32k.py --do_train --train_file data/train.json  --history_c
 ## 友情链接
 
 https://github.com/THUDM/ChatGLM2-6B
+
 https://github.com/DachengLi1/LongChat
 
 
