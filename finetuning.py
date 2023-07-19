@@ -197,6 +197,7 @@ def main():
                 if history_column is None:
                     # ct数据建模策略，e.g: 摘要、单任务知识挖掘模型
                     prompt = query
+                    prompt = "[Round {}]\n\n问：{}\n\n答：".format(1, prompt)  # a句
                 else:
                     # cqa数据建模策略，e.g: 对话、问答、多任务的知识挖掘模型
                     prompt = ""
@@ -215,7 +216,10 @@ def main():
                         content = ""
                         for i, text in enumerate(history):
                             content += text
-                        prompt_ = "给出以下信息：\n\n{}\n\n{}".format(content, query)
+                        if content.strip():
+                            prompt_ = "{}\n{}".format(query, content)
+                        else:
+                            prompt_ = query
                         prompt = "[Round {}]\n\n问：{}\n\n答：".format(len(history) + 1, prompt_)
 
                 prompt = prefix + prompt
